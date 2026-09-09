@@ -1,0 +1,11 @@
+.gradle/
+build/
+**/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+*.jks
+*.keystore
+app/src/main/assets/*.tflite
+app/src/main/assets/*.pt
