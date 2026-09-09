@@ -72,10 +72,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Gradle 9.5
+      - name: Install Gradle 9.5.1
         run: |
           set -euo pipefail
-          GRADLE_VERSION='9.5'
+          GRADLE_VERSION='9.5.1'
           DIST_DIR="$RUNNER_TEMP/gradle-dist"
           INSTALL_DIR="$RUNNER_TEMP/gradle-$GRADLE_VERSION"
           ARCHIVE="$RUNNER_TEMP/gradle-$GRADLE_VERSION-bin.zip"
@@ -87,6 +87,7 @@ jobs:
               "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip" \
               -o "$ARCHIVE"
             unzip -q "$ARCHIVE" -d "$DIST_DIR"
+            test -x "$DIST_DIR/gradle-$GRADLE_VERSION/bin/gradle"
             mv "$DIST_DIR/gradle-$GRADLE_VERSION" "$INSTALL_DIR"
           fi
 
