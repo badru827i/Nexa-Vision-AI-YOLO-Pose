@@ -19,6 +19,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
@@ -35,7 +36,7 @@ class MainActivity : ComponentActivity() {
     private var modelReady = false
 
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startCamera() else showStatus("Camera permission required")
+        if (granted) startCamera() else showStatus("CAMERA PERMISSION REQUIRED")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,7 +82,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread { showStatus("YOLO11x-POSE READY • 640×640 • FP32") }
             }.onFailure { error ->
                 modelReady = false
-                runOnUiThread { showStatus("MODEL REQUIRED: ${error.message ?: "yolo11x-pose.tflite missing"}") }
+                runOnUiThread { showStatus("MODEL ERROR: ${error.message ?: "yolo11x-pose.tflite missing"}") }
             }
         }
     }
@@ -89,17 +90,21 @@ class MainActivity : ComponentActivity() {
     private fun startCamera() {
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
-            val provider = future.get()
-            val previewUseCase = Preview.Builder().build().also { it.surfaceProvider = preview.surfaceProvider }
-            val analysis = ImageAnalysis.Builder()
-                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .setTargetResolution(android.util.Size(1280, 720))
-                .build()
+            try {
+                val provider = future.get()
+                val previewUseCase = Preview.Builder().build().also { it.surfaceProvider = preview.surfaceProvider }
+                val analysis = ImageAnalysis.Builder()
+                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setTargetResolution(android.util.Size(1280, 720))
+                    .build()
 
-            analysis.setAnalyzer(analysisExecutor) { image -> analyze(image) }
-            provider.unbindAll()
-            provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, previewUseCase, analysis)
+                analysis.setAnalyzer(analysisExecutor) { image -> analyze(image) }
+                provider.unbindAll()
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, previewUseCase, analysis)
+            } catch (t: Throwable) {
+                showStatus("CAMERA ERROR: ${t.javaClass.simpleName}")
+            }
         }, ContextCompat.getMainExecutor(this))
     }
 
@@ -126,8 +131,10 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread { showStatus("YOLO11x-POSE • ${fps.toInt()} FPS • ${mapped.size} PERSON • 17 KP") }
             }
             runOnUiThread { overlay.update(mapped) }
-        } catch (_: Throwable) {
-            // Keep realtime camera alive even if one frame is malformed.
+        } catch (t: Throwable) {
+            runOnUiThread {
+                showStatus("AI ERROR: ${t.javaClass.simpleName}: ${t.message ?: "unknown"}")
+            }
         } finally {
             busy.set(false)
             image.close()
@@ -152,11 +159,22 @@ class MainActivity : ComponentActivity() {
 
     private fun imageToBitmap(image: ImageProxy): Bitmap {
         val plane = image.planes[0]
-        val buffer = plane.buffer
-        buffer.rewind()
-        val bitmap = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
-        bitmap.copyPixelsFromBuffer(buffer)
-        return bitmap
+        val width = image.width
+        val height = image.height
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        val rowBytes = width * pixelStride
+        val output = ByteBuffer.allocateDirect(width * height * 4)
+        val source = plane.buffer
+        source.rewind()
+        val row = ByteArray(rowBytes)
+        for (y in 0 until height) {
+            source.position(y * rowStride)
+            source.get(row, 0, rowBytes)
+            output.put(row)
+        }
+        output.rewind()
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { it.copyPixelsFromBuffer(output) }
     }
 
     private fun rotate(bitmap: Bitmap, degrees: Int): Bitmap {
