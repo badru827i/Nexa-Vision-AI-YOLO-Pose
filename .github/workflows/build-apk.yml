@@ -41,7 +41,6 @@ jobs:
         run: |
           . .export-venv/bin/activate
           python - <<'PY'
-          from pathlib import Path
           from ultralytics import YOLO
 
           model = YOLO('yolo11x-pose.pt')
@@ -73,13 +72,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle 8.13
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: '8.13'
+      - name: Verify system Gradle
+        run: |
+          gradle --version
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          gradle :app:assembleDebug --no-daemon --stacktrace --no-build-cache
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
