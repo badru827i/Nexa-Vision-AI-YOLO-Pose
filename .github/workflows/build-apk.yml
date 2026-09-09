@@ -1,0 +1,59 @@
+name: Build Nexa Vision AI APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Ultralytics exporter
+        run: python -m pip install --upgrade pip ultralytics
+
+      - name: Export YOLO11x-Pose to LiteRT FP32
+        run: |
+          python - <<'PY'
+          from ultralytics import YOLO
+          model = YOLO('yolo11x-pose.pt')
+          model.export(format='litert', imgsz=640, batch=1, device='cpu')
+          PY
+          MODEL=$(find . -type f -name 'yolo11x-pose.tflite' -print -quit)
+          test -n "$MODEL"
+          mkdir -p app/src/main/assets
+          cp "$MODEL" app/src/main/assets/yolo11x-pose.tflite
+          ls -lh app/src/main/assets/yolo11x-pose.tflite
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.13
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.13'
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nexa-Vision-AI-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
